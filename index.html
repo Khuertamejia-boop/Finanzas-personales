@@ -36,6 +36,7 @@
   }
 
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  [hidden]{display:none !important;}
   html,body{height:100%;}
   body{
     margin:0; background:var(--bg); color:var(--fg); font-family:var(--font-body);
@@ -149,6 +150,22 @@
   .tx-row .amt{font-family:var(--font-mono); font-weight:600; font-size:14px; flex:none;}
   .tx-row .del{background:none; border:none; color:var(--muted); font-size:20px; width:36px; height:36px; margin-right:-6px; border-radius:10px; cursor:pointer; flex:none;}
   .empty{color:var(--muted); font-size:13px; text-align:center; padding:30px 10px;}
+  .tx-row{cursor:pointer;}
+  .tx-row.uncat .cat{color:var(--accent-2); font-weight:600;}
+  .tx-row.uncat svg{stroke:var(--accent-2);}
+  .tx-row .del.confirm{width:auto; padding:0 10px; background:var(--danger); color:var(--bg); font-size:12.5px; font-weight:600;}
+  .uncat-pill{display:inline-flex; align-items:center; gap:6px; margin-top:10px; padding:7px 12px; border-radius:999px;
+    border:none; background:color-mix(in srgb, var(--accent-2) 16%, var(--surface)); color:var(--fg); font-size:12.5px; font-weight:600; cursor:pointer;}
+  .uncat-pill .n{background:var(--accent-2); color:var(--bg); border-radius:999px; padding:1px 7px; font-family:var(--font-mono);}
+
+  .sheet-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:30; display:flex; align-items:flex-end;}
+  .sheet{width:100%; background:var(--bg); border-radius:24px 24px 0 0; padding:18px 18px calc(env(safe-area-inset-bottom, 0px) + 18px);
+    box-shadow:0 -8px 30px rgba(0,0,0,.18);}
+  .sheet .grab{width:40px; height:5px; border-radius:3px; background:var(--border); margin:0 auto 14px;}
+  .sheet h3{font-size:16px; margin-bottom:4px;}
+  .sheet .sub{font-size:13px; color:var(--muted); margin-bottom:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .sheet .cat-grid{margin-bottom:12px;}
+  .sheet .learn{font-size:12px; color:var(--muted); margin:0 0 12px;}
 
   /* ---- Ajustes ---- */
   .field{margin-bottom:16px;}
@@ -231,6 +248,7 @@
         <div class="label">Total del mes</div>
         <div class="value mono" id="monthTotal">S/ 0.00</div>
         <div class="sub" id="monthCount">0 movimientos</div>
+        <button class="uncat-pill" id="uncatPill" hidden><span class="n" id="uncatN">0</span> por categorizar</button>
       </div>
 
       <div class="section-label">Por categoría</div>
@@ -263,7 +281,7 @@
         <label>Datos guardados en este teléfono</label>
         <button class="btn-secondary" id="exportBtn">Exportar CSV</button>
       </div>
-      <p class="hint" style="margin-top:22px;">Versión 2 · 28 sep 2026</p>
+      <p class="hint" style="margin-top:22px;">Versión 3 · 28 sep 2026</p>
     </section>
   </main>
 
@@ -284,6 +302,17 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="sheet-backdrop" id="catSheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="grab"></div>
+    <h3 id="sheetTitle">Elegir categoría</h3>
+    <div class="sub" id="sheetSub"></div>
+    <div class="cat-grid" id="sheetGrid"></div>
+    <p class="learn" id="sheetLearn" hidden></p>
+    <button class="btn-secondary" id="sheetCancel" style="width:100%;">Cancelar</button>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -321,6 +350,10 @@
   function $all(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
   function fmt(n){ return "S/ " + (Math.round(n*100)/100).toFixed(2); }
   function pad(n){ return n < 10 ? "0"+n : ""+n; }
+  function esc(t){ return String(t == null ? "" : t).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  var UNCAT = "Sin categorizar";
+  var UNCAT_ICON = '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4"/><circle cx="12" cy="17" r=".6"/>';
+  function catIcon(c){ if (c === UNCAT) return UNCAT_ICON; var d = CATS.filter(function(x){ return x.id === c; })[0]; return d ? d.icon : CATS[8].icon; }
 
   function getUrl(){ try { return localStorage.getItem(LS_URL) || ""; } catch(e){ return ""; } }
   function setUrl(u){ try { localStorage.setItem(LS_URL, u); } catch(e){} }
@@ -383,7 +416,7 @@
       b.innerHTML = '<svg viewBox="0 0 24 24">'+c.icon+'</svg><span>'+c.id+"</span>";
       b.addEventListener("click", function(){
         state.category = c.id;
-        $all(".cat-btn").forEach(function(x){ x.classList.remove("sel"); });
+        $all("#catGrid .cat-btn").forEach(function(x){ x.classList.remove("sel"); });
         b.classList.add("sel");
         updateSaveEnabled();
       });
@@ -416,7 +449,7 @@
   function resetEntry(){
     state.amount = ""; state.category = null; state.payMethod = null; state.note = "";
     renderAmount();
-    $all(".cat-btn").forEach(function(x){ x.classList.remove("sel"); });
+    $all("#catGrid .cat-btn").forEach(function(x){ x.classList.remove("sel"); });
     $all(".chip").forEach(function(x){ x.classList.remove("sel"); });
     $("#noteInput").value = "";
   }
@@ -433,7 +466,7 @@
       Categoria: state.category,
       MetodoPago: state.payMethod,
       Nota: $("#noteInput").value.trim(),
-      Fuente: "manual",
+      Fuente: "app",
       Comercio: "",
       Id: "local-" + Date.now() + "-" + Math.random().toString(36).slice(2,7),
       _pendiente: true
@@ -560,15 +593,19 @@
     } else {
       var max = byCat[catsSorted[0]] || 1;
       barsEl.innerHTML = catsSorted.map(function(c){
-        var def = CATS.filter(function(x){ return x.id === c; })[0];
-        var icon = def ? def.icon : CATS[8].icon;
+        var icon = catIcon(c);
         var pct = Math.max(4, Math.round((byCat[c]/max)*100));
         return '<div class="bar-row"><svg viewBox="0 0 24 24">'+icon+'</svg>'+
-          '<span class="name">'+c+'</span>'+
+          '<span class="name">'+esc(c)+'</span>'+
           '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div>'+
           '<span class="amt mono">'+fmt(byCat[c])+'</span></div>';
       }).join("");
     }
+
+    // pendientes por categorizar (de todos los meses)
+    var uncat = (state.rows || []).filter(function(r){ return r.Categoria === UNCAT; });
+    $("#uncatPill").hidden = !uncat.length;
+    $("#uncatN").textContent = uncat.length;
 
     // lista de movimientos
     var listEl = $("#txList");
@@ -576,25 +613,78 @@
       listEl.innerHTML = '<div class="empty">Sin movimientos este mes.</div>';
     } else {
       listEl.innerHTML = rows.map(function(r){
-        var def = CATS.filter(function(x){ return x.id === r.Categoria; })[0];
-        var icon = def ? def.icon : CATS[8].icon;
-        var d = new Date(r.Timestamp);
-        var when = pad(d.getDate())+"/"+pad(d.getMonth()+1)+" · "+(r.MetodoPago||"");
-        if (r.Nota) when += " · " + r.Nota;
-        return '<div class="tx-row" data-id="'+(r.Id||"")+'">'+
-          '<svg viewBox="0 0 24 24">'+icon+'</svg>'+
-          '<div class="info"><div class="cat">'+r.Categoria+'</div><div class="meta">'+when+'</div></div>'+
+        var d = new Date(r.Fecha || r.Timestamp);
+        var parts = [pad(d.getDate())+"/"+pad(d.getMonth()+1)];
+        if (r.Comercio) parts.push(r.Comercio);
+        if (r.MetodoPago) parts.push(r.MetodoPago);
+        if (r.Nota) parts.push(r.Nota);
+        if (r._pendiente) parts.push("sin enviar");
+        return '<div class="tx-row'+(r.Categoria === UNCAT ? " uncat" : "")+'" data-id="'+esc(r.Id)+'">'+
+          '<svg viewBox="0 0 24 24">'+catIcon(r.Categoria)+'</svg>'+
+          '<div class="info"><div class="cat">'+esc(r.Categoria)+'</div><div class="meta">'+esc(parts.join(" · "))+'</div></div>'+
           '<div class="amt">'+fmt(Number(r.Monto)||0)+'</div>'+
           '<button class="del" aria-label="Eliminar">×</button></div>';
       }).join("");
-      $all(".tx-row .del").forEach(function(btn){
-        btn.addEventListener("click", function(){
-          var row = btn.closest(".tx-row");
-          var id = row.dataset.id;
-          deleteRow(id);
-        });
-      });
     }
+  }
+
+  /* Tocar un movimiento abre el selector de categoría; la × pide confirmar antes de borrar */
+  function onTxListClick(ev){
+    var rowEl = ev.target.closest(".tx-row");
+    if (!rowEl) return;
+    var id = rowEl.dataset.id;
+    var del = ev.target.closest(".del");
+    if (del){
+      if (del.classList.contains("confirm")){ deleteRow(id); return; }
+      del.classList.add("confirm"); del.textContent = "Borrar";
+      setTimeout(function(){ if (del.isConnected){ del.classList.remove("confirm"); del.textContent = "×"; } }, 3000);
+      return;
+    }
+    var row = (state.rows || []).filter(function(r){ return r.Id === id; })[0];
+    if (row) openCatSheet(row);
+  }
+
+  var sheetRow = null;
+  function openCatSheet(row){
+    sheetRow = row;
+    $("#sheetTitle").textContent = row.Categoria === UNCAT ? "¿En qué categoría va?" : "Cambiar categoría";
+    $("#sheetSub").textContent = fmt(Number(row.Monto)||0) + (row.Comercio ? " · " + row.Comercio : "") + (row.Nota ? " · " + row.Nota : "");
+    var learn = $("#sheetLearn");
+    learn.hidden = !row.Comercio;
+    learn.textContent = row.Comercio ? "Las próximas compras en " + row.Comercio + " irán solas a esta categoría." : "";
+    $("#sheetGrid").innerHTML = CATS.map(function(c){
+      return '<button type="button" class="cat-btn'+(c.id === row.Categoria ? " sel" : "")+'" data-cat="'+esc(c.id)+'">'+
+        '<svg viewBox="0 0 24 24">'+c.icon+'</svg><span>'+esc(c.id)+'</span></button>';
+    }).join("");
+    $("#catSheet").hidden = false;
+  }
+  function closeCatSheet(){ $("#catSheet").hidden = true; sheetRow = null; }
+
+  function setCategory(row, cat){
+    row.Categoria = cat;
+    saveLocal(state.rows);
+    renderResumen();
+    var url = getUrl();
+    if (!url || row._pendiente) return;
+    fetch(url + "?action=categorize&id=" + encodeURIComponent(row.Id) + "&categoria=" + encodeURIComponent(cat))
+      .then(function(r){ return r.json(); })
+      .then(function(j){ toast(j.ok ? "Categoría actualizada" : "No se pudo actualizar en la hoja"); })
+      .catch(function(){ toast("Sin conexión: el cambio quedó solo en el teléfono"); });
+  }
+
+  function initCatSheet(){
+    $("#txList").addEventListener("click", onTxListClick);
+    $("#sheetGrid").addEventListener("click", function(ev){
+      var b = ev.target.closest(".cat-btn");
+      if (!b || !sheetRow) return;
+      var row = sheetRow; closeCatSheet(); setCategory(row, b.dataset.cat);
+    });
+    $("#sheetCancel").addEventListener("click", closeCatSheet);
+    $("#catSheet").addEventListener("click", function(ev){ if (ev.target.id === "catSheet") closeCatSheet(); });
+    $("#uncatPill").addEventListener("click", function(){
+      var first = (state.rows || []).filter(function(r){ return r.Categoria === UNCAT; })[0];
+      if (first) openCatSheet(first);
+    });
   }
 
   function deleteRow(id){
@@ -680,6 +770,7 @@
     buildPay();
     initTabs();
     initAjustes();
+    initCatSheet();
     renderAmount();
 
     state.rows = loadLocal();
