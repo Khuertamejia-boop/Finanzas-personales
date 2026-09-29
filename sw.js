@@ -1,4 +1,4 @@
-const CACHE = "finanzas-v1";
+const CACHE = "finanzas-v2";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -15,13 +15,18 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Network-first for the Apps Script API, cache-first for the app shell.
+// Red primero para la app (así los cambios llegan sin reinstalar); caché solo si no hay internet.
+// Las llamadas a Google Apps Script pasan directo a la red.
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (url.origin !== self.location.origin) {
-    return; // let API calls to Google Apps Script go straight to the network
-  }
+  if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request))
+    fetch(e.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        return res;
+      })
+      .catch(() => caches.match(e.request).then((r) => r || caches.match("./index.html")))
   );
 });
